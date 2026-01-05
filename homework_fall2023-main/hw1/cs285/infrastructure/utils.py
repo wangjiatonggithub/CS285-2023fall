@@ -13,7 +13,7 @@ import time
 from cs285.infrastructure import pytorch_util as ptu
 
 
-def sample_trajectory(env, policy, max_path_length, render=False):
+def sample_trajectory(env, policy, max_path_length, render=False):# 根据给定策略在环境中采样轨迹
     """Sample a rollout in the environment from a policy."""
     
     # initialize env for the beginning of a new rollout
@@ -31,18 +31,35 @@ def sample_trajectory(env, policy, max_path_length, render=False):
             else:
                 img = env.render(mode='single_rgb_array')
             image_obs.append(cv2.resize(img, dsize=(250, 250), interpolation=cv2.INTER_CUBIC))
-    
+
+
         # TODO use the most recent ob to decide what to do
-        ac = TODO # HINT: this is a numpy array
-        ac = ac[0]
+        # ac = TODO # HINT: this is a numpy array
+        # ac = ac[0]
+
+        # 使用策略获取当前观察值的动作
+        ac = policy.get_action(ob)  # 这是numpy数组
+        # 如果策略返回元组 (action, info)，则取第一个元素
+        if isinstance(ac, tuple):
+            ac = ac[0]
 
         # TODO: take that action and get reward and next ob
-        next_ob, rew, done, _ = TODO
-        
+        # next_ob, rew, done, _ = TODO
+
+        # 执行动作并获取环境反馈
+        # 在较新的gym版本中，step返回(observation, reward, terminated, truncated, info)五元组
+        step_result = env.step(ac)
+        if len(step_result) == 5:  # 新版本gym
+            next_ob, rew, terminated, truncated, _ = step_result
+            done = terminated or truncated
+        else:  # 旧版本gym
+            next_ob, rew, done, _ = step_result
+
         # TODO rollout can end due to done, or due to max_path_length
         steps += 1
-        rollout_done = TODO # HINT: this is either 0 or 1
-        
+        # rollout_done = TODO # HINT: this is either 0 or 1
+        rollout_done = 1 if (done or steps >= max_path_length) else 0
+
         # record result of taking that action
         obs.append(ob)
         acs.append(ac)
@@ -64,7 +81,7 @@ def sample_trajectory(env, policy, max_path_length, render=False):
             "terminal": np.array(terminals, dtype=np.float32)}
 
 
-def sample_trajectories(env, policy, min_timesteps_per_batch, max_path_length, render=False):
+def sample_trajectories(env, policy, min_timesteps_per_batch, max_path_length, render=False): # 反复调用sample_trajectory函数，直到收集到指定时间步的轨迹
     """Collect rollouts until we have collected min_timesteps_per_batch steps."""
 
     timesteps_this_batch = 0
@@ -81,7 +98,7 @@ def sample_trajectories(env, policy, min_timesteps_per_batch, max_path_length, r
     return paths, timesteps_this_batch
 
 
-def sample_n_trajectories(env, policy, ntraj, max_path_length, render=False):
+def sample_n_trajectories(env, policy, ntraj, max_path_length, render=False): # 收集指定数量ntraj的轨迹
     """Collect ntraj rollouts."""
 
     paths = []
@@ -96,7 +113,7 @@ def sample_n_trajectories(env, policy, ntraj, max_path_length, render=False):
 ########################################
 
 
-def convert_listofrollouts(paths, concat_rew=True):
+def convert_listofrollouts(paths, concat_rew=True): # 将多个轨迹数据合并为单个数组
     """
         Take a list of rollout dictionaries
         and return separate arrays,
@@ -105,9 +122,9 @@ def convert_listofrollouts(paths, concat_rew=True):
     observations = np.concatenate([path["observation"] for path in paths])
     actions = np.concatenate([path["action"] for path in paths])
     if concat_rew:
-        rewards = np.concatenate([path["reward"] for path in paths])
+        rewards = np.concatenate([path["reward"] for path in paths]) # 返回单一数组
     else:
-        rewards = [path["reward"] for path in paths]
+        rewards = [path["reward"] for path in paths] # 返回数组列表
     next_observations = np.concatenate([path["next_observation"] for path in paths])
     terminals = np.concatenate([path["terminal"] for path in paths])
     return observations, actions, rewards, next_observations, terminals
@@ -117,7 +134,7 @@ def convert_listofrollouts(paths, concat_rew=True):
 ########################################
             
 
-def compute_metrics(paths, eval_paths):
+def compute_metrics(paths, eval_paths): # 计算训练和评估轨迹的指标
     """Compute metrics for logging."""
 
     # returns, for logging
@@ -149,5 +166,5 @@ def compute_metrics(paths, eval_paths):
 ############################################
 
 
-def get_pathlength(path):
+def get_pathlength(path): # 获取轨迹的长度
     return len(path["reward"])

@@ -6,7 +6,7 @@ Functions to edit:
     3. update
 """
 
-import abc
+import abc # 标准库，用于定义抽象基类
 import itertools
 from typing import Any
 from torch import nn
@@ -50,11 +50,11 @@ def build_mlp(
         in_size = size
     layers.append(nn.Linear(in_size, output_size))
 
-    mlp = nn.Sequential(*layers)
+    mlp = nn.Sequential(*layers) # 把层序列化并返回一个可训练的MLP模块
     return mlp
 
 
-class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
+class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta): # BasePolicy是一个抽象基类，定义了策略的接口
     """
     Defines an MLP for supervised learning which maps observations to continuous
     actions.
@@ -94,23 +94,23 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         self.training = training
         self.nn_baseline = nn_baseline
 
-        self.mean_net = build_mlp(
+        self.mean_net = build_mlp( # 动作均值网络
             input_size=self.ob_dim,
             output_size=self.ac_dim,
             n_layers=self.n_layers, size=self.size,
         )
         self.mean_net.to(ptu.device)
-        self.logstd = nn.Parameter(
+        self.logstd = nn.Parameter( # 动作标准差网络
 
             torch.zeros(self.ac_dim, dtype=torch.float32, device=ptu.device)
         )
         self.logstd.to(ptu.device)
         self.optimizer = optim.Adam(
-            itertools.chain([self.logstd], self.mean_net.parameters()),
+            itertools.chain([self.logstd], self.mean_net.parameters()), # 串联mean_net和logstd参数
             self.learning_rate
         )
 
-    def save(self, filepath):
+    def save(self, filepath): # 保存模型参数
         """
         :param filepath: path to save MLP
         """
@@ -129,7 +129,23 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         # through it. For example, you can return a torch.FloatTensor. You can also
         # return more flexible objects, such as a
         # `torch.distributions.Distribution` object. It's up to you!
-        raise NotImplementedError
+        # raise NotImplementedError
+
+        # 确保 observation 在正确 device 并为 tensor
+        if not isinstance(observation, torch.Tensor):
+            obs = ptu.from_numpy(observation)
+        else:
+            obs = observation.to(ptu.device)
+
+        mean = self.mean_net(obs)  # (batch, ac_dim) 或 (ac_dim,)
+        # logstd shape: (ac_dim,), 需要 broadcast 到 mean 的形状
+        std = torch.exp(self.logstd)
+        if mean.dim() == 2:
+            std = std.unsqueeze(0).expand_as(mean)
+        # 构造可重参数化的正态分布并采样
+        dist = distributions.Normal(mean, std)
+        action = dist.rsample()  # 可求导的采样
+        return action, dist
 
     def update(self, observations, actions):
         """
@@ -141,8 +157,31 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             dict: 'Training Loss': supervised learning loss
         """
         # TODO: update the policy and return the loss
-        loss = TODO
-        return {
+        # loss = TODO
+
+        # 准备张量并移动到 device
+        if not isinstance(observations, torch.Tensor):
+            obs_tensor = ptu.from_numpy(observations)
+        else:
+            obs_tensor = observations.to(ptu.device)
+
+        if not isinstance(actions, torch.Tensor):
+            actions_tensor = ptu.from_numpy(actions)
+        else:
+            actions_tensor = actions.to(ptu.device)
+
+        # 前向得到均值（不需要采样用于 MSE）
+        pred_mean = self.mean_net(obs_tensor)
+
+        # 均方误差损失
+        loss = F.mse_loss(pred_mean, actions_tensor)
+
+        # 优化步骤
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        return{
             # You can add extra logging information here, but keep this line
             'Training Loss': ptu.to_numpy(loss),
         }
