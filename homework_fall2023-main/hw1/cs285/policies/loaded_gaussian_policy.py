@@ -81,7 +81,6 @@ class LoadedGaussianPolicy(BasePolicy, nn.Module):
 
     def forward(self, obs):
         # Truncate or pad the observation if it does not match. # 维度匹配，多余的去掉，不足的用0补齐
-        breakpoint()
         if self.obs_dim != obs.shape[-1]:
             n_pad = self.obs_dim - obs.shape[-1]
             if n_pad > 0:
@@ -109,7 +108,6 @@ class LoadedGaussianPolicy(BasePolicy, nn.Module):
         else:
             observation = obs[None, :]
         observation = ptu.from_numpy(observation.astype(np.float32))
-        breakpoint()
         action = self(observation)
         return ptu.to_numpy(action)
 

@@ -165,5 +165,5 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta): # BasePolicy是
     def get_action(self, obs: np.ndarray) -> np.ndarray:
         observation = torch.tensor(obs, dtype=torch.float32).to(ptu.device)
         with torch.no_grad():
-            action = ptu.to_numpy(self.forward(observation))
+            action = ptu.to_numpy(self.forward(observation)) # 将torch张量数据转换成numpy数组
         return action

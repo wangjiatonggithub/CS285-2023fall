@@ -147,7 +147,6 @@ def run_training_loop(params):
                 # paths = TODO
                 for i in range(len(paths)):
                     obs = paths[i]['observation']
-                    breakpoint()
                     paths[i]['action'] = expert_policy.get_action(obs)
 
         total_envsteps += envsteps_this_batch
@@ -166,7 +165,7 @@ def run_training_loop(params):
           # for imitation learning, we only need observations and actions.  
           # ob_batch, ac_batch = TODO
           indices = np.random.permutation(len(replay_buffer))[:params['train_batch_size']] # 先将replay_buffer中的数据随机打乱，在取打乱后的前train_batch_size个数据
-          ob_batch = torch.from_numpy(replay_buffer.obs[indices]).to(ptu.device) # 从relpay_buffer中采样训练数据并上传到gpu上
+          ob_batch = torch.from_numpy(replay_buffer.obs[indices]).to(ptu.device) # 从relpay_buffer中采样训练数据并上传到gpu上，并把numpy数组转为torch张量
           ac_batch = torch.from_numpy(replay_buffer.acs[indices]).to(ptu.device)
 
           # use the sampled data to train an agent
