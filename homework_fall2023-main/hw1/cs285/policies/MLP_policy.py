@@ -116,7 +116,7 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta): # BasePolicy是
         """
         torch.save(self.state_dict(), filepath)
 
-    def forward(self, observation: torch.FloatTensor) -> Any:
+    def forward(self, observation: torch.FloatTensor) -> Any: # Any表明该函数可以返回任意类型的数据
         """
         Defines the forward pass of the network
 
@@ -130,22 +130,12 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta): # BasePolicy是
         # return more flexible objects, such as a
         # `torch.distributions.Distribution` object. It's up to you!
         # raise NotImplementedError
-
-        # 确保 observation 在正确 device 并为 tensor
-        if not isinstance(observation, torch.Tensor):
-            obs = ptu.from_numpy(observation)
-        else:
-            obs = observation.to(ptu.device)
-
-        mean = self.mean_net(obs)  # (batch, ac_dim) 或 (ac_dim,)
-        # logstd shape: (ac_dim,), 需要 broadcast 到 mean 的形状
-        std = torch.exp(self.logstd)
-        if mean.dim() == 2:
-            std = std.unsqueeze(0).expand_as(mean)
-        # 构造可重参数化的正态分布并采样
-        dist = distributions.Normal(mean, std)
-        action = dist.rsample()  # 可求导的采样
-        return action, dist
+        observation = observation.float().to(ptu.device)
+        action_mean = self.mean_net(observation)
+        action_std = torch.exp(self.logstd)
+        action_distribution = distributions.Normal(action_mean,action_std)
+        sampled_action = action_distribution.rsample()
+        return sampled_action
 
     def update(self, observations, actions):
         """
@@ -158,24 +148,10 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta): # BasePolicy是
         """
         # TODO: update the policy and return the loss
         # loss = TODO
-
-        # 准备张量并移动到 device
-        if not isinstance(observations, torch.Tensor):
-            obs_tensor = ptu.from_numpy(observations)
-        else:
-            obs_tensor = observations.to(ptu.device)
-
-        if not isinstance(actions, torch.Tensor):
-            actions_tensor = ptu.from_numpy(actions)
-        else:
-            actions_tensor = actions.to(ptu.device)
-
-        # 前向得到均值（不需要采样用于 MSE）
-        pred_mean = self.mean_net(obs_tensor)
-
+        # 前向传播得到动作
+        predicted_actions = self.forward(observations)
         # 均方误差损失
-        loss = F.mse_loss(pred_mean, actions_tensor)
-
+        loss = F.mse_loss(predicted_actions, actions)
         # 优化步骤
         self.optimizer.zero_grad()
         loss.backward()
@@ -185,3 +161,9 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta): # BasePolicy是
             # You can add extra logging information here, but keep this line
             'Training Loss': ptu.to_numpy(loss),
         }
+
+    def get_action(self, obs: np.ndarray) -> np.ndarray:
+        observation = torch.tensor(obs, dtype=torch.float32).to(ptu.device)
+        with torch.no_grad():
+            action = ptu.to_numpy(self.forward(observation))
+        return action

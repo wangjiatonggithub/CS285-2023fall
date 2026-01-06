@@ -6,7 +6,7 @@ Functions to edit:
 """
 
 
-import pickle #序列化库
+import pickle #序列化库，用于处理专家数据库和专家策略.pkl文件
 import os
 import time
 import gym
@@ -103,9 +103,9 @@ def run_training_loop(params):
 
     print('Loading expert policy from...', params['expert_policy_file']) # 加载专家策略，并移动到当前设备
     expert_policy = LoadedGaussianPolicy(params['expert_policy_file']) # 调用loaded_gaussian_policy函数
-    expert_policy.to(ptu.device) # 调用pytorch_util函数
+    expert_policy.to(ptu.device) # 调用pytorch_util函数，专家策略上传到gpu
     print('Done restoring expert policy...')
-
+    # print("mean"%expert_policy.obs_norm_mean)
     #######################
     ## TRAINING LOOP
     #######################
@@ -118,7 +118,7 @@ def run_training_loop(params):
     for itr in range(params['n_iter']):
         print("\n\n********** Iteration %i ************"%itr)
 
-        # decide if videos should be rendered/logged at this iteration
+        # decide if videos should be rendered/logged at this iteration 记录评估视频和参数
         log_video = ((itr % params['video_log_freq'] == 0) and (params['video_log_freq'] != -1))
         # decide if metrics should be logged
         log_metrics = (itr % params['scalar_log_freq'] == 0)
@@ -126,8 +126,8 @@ def run_training_loop(params):
         print("\nCollecting data to be used for training...")
         if itr == 0: # 第1次迭代，从原始专家数据集中采集，BC算法只有1次迭代，DAgger算法有多次迭代
             # BC training from expert data.
-            paths = pickle.load(open(params['expert_data'], 'rb'))
-            envsteps_this_batch = 0
+            paths = pickle.load(open(params['expert_data'], 'rb')) # r：以只读形式打开，b：表示该文件是二进制文件
+            envsteps_this_batch = 0 # BC与环境交互次数为0
         else: # 之后每次迭代DAgger算法都要重标注采集数据并放入经验回放池
             # DAGGER training from sampled data relabeled by expert
             assert params['do_dagger']
@@ -145,16 +145,10 @@ def run_training_loop(params):
                 # HINT: query the policy (using the get_action function) with paths[i]["observation"]
                 # and replace paths[i]["action"] with these expert labels
                 # paths = TODO
-                for path in paths:
-                    obs = path["observation"]
-                    # 支持专家策略返回单个 action 或 (action, info)
-                    actions = []
-                    for ob in obs:
-                        a = expert_policy.get_action(ob)
-                        if isinstance(a, tuple):
-                            a = a[0]
-                        actions.append(a)
-                    path["action"] = np.array(actions)
+                for i in range(len(paths)):
+                    obs = paths[i]['observation']
+                    breakpoint()
+                    paths[i]['action'] = expert_policy.get_action(obs)
 
         total_envsteps += envsteps_this_batch
         # add collected data to replay buffer
@@ -171,10 +165,9 @@ def run_training_loop(params):
           # HINT3: return corresponding data points from each array (i.e., not different indices from each array)
           # for imitation learning, we only need observations and actions.  
           # ob_batch, ac_batch = TODO
-          num_data_points = replay_buffer.obs.shape[0]
-          indices = np.random.choice(num_data_points, size=params['train_batch_size'], replace=True)
-          ob_batch = replay_buffer.obs[indices]
-          ac_batch = replay_buffer.acs[indices]
+          indices = np.random.permutation(len(replay_buffer))[:params['train_batch_size']] # 先将replay_buffer中的数据随机打乱，在取打乱后的前train_batch_size个数据
+          ob_batch = torch.from_numpy(replay_buffer.obs[indices]).to(ptu.device) # 从relpay_buffer中采样训练数据并上传到gpu上
+          ac_batch = torch.from_numpy(replay_buffer.acs[indices]).to(ptu.device)
 
           # use the sampled data to train an agent
           train_log = actor.update(ob_batch, ac_batch)
@@ -183,9 +176,9 @@ def run_training_loop(params):
         # log/save
         print('\nBeginning logging procedure...')
         if log_video:
-            # save eval rollouts as videos in tensorboard event file
+            # save eval rollouts as videos in tensorboard event file 生成评估视频
             print('\nCollecting video rollouts eval')
-            eval_video_paths = utils.sample_n_trajectories( # 采集评估视频
+            eval_video_paths = utils.sample_n_trajectories( # 采集评估视频，MAX_NVIDEO为采集轨迹条数
                 env, actor, MAX_NVIDEO, MAX_VIDEO_LEN, True)
 
             # save videos
@@ -199,7 +192,7 @@ def run_training_loop(params):
         if log_metrics:
             # save eval metrics
             print("\nCollecting data for eval...")
-            eval_paths, eval_envsteps_this_batch = utils.sample_trajectories( # 采集评估轨迹
+            eval_paths, eval_envsteps_this_batch = utils.sample_trajectories( # 采集评估轨迹，一共采集eval_batch_size步
                 env, actor, params['eval_batch_size'], params['ep_len'])
 
             logs = utils.compute_metrics(paths, eval_paths) # 计算评估指标
@@ -210,13 +203,13 @@ def run_training_loop(params):
             if itr == 0:
                 logs["Initial_DataCollection_AverageReturn"] = logs["Train_AverageReturn"]
 
-            # perform the logging
+            # perform the logging 输出评估指标
             for key, value in logs.items():
                 print('{} : {}'.format(key, value))
                 logger.log_scalar(value, key, itr)
             print('Done logging...\n\n')
 
-            logger.flush()
+            logger.flush() # 将内存缓冲区中的日志数据存到硬盘上
 
         if params['save_params']:
             print('\nSaving agent params')
@@ -277,7 +270,7 @@ def main():
         os.makedirs(data_path)
     logdir = logdir_prefix + args.exp_name + '_' + args.env_name + '_' + time.strftime("%d-%m-%Y_%H-%M-%S")
     logdir = os.path.join(data_path, logdir)
-    params['logdir'] = logdir # 存储日志的路径
+    params['logdir'] = logdir # 存储日志的文件名
     if not(os.path.exists(logdir)):
         os.makedirs(logdir)
 

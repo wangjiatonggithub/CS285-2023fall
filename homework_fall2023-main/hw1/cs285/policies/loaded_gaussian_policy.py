@@ -7,7 +7,7 @@ import torch
 import pickle
 
 
-def create_linear_layer(W, b) -> nn.Linear:
+def create_linear_layer(W, b) -> nn.Linear: # 利用已知的权重和偏置创建相应维度的线性层神经网络
     out_features, in_features = W.shape
     linear_layer = nn.Linear(
         in_features,
@@ -18,7 +18,7 @@ def create_linear_layer(W, b) -> nn.Linear:
     return linear_layer
 
 
-def read_layer(l):
+def read_layer(l): # 读取预训练模型的权重和偏置
     assert list(l.keys()) == ['AffineLayer']
     assert sorted(l['AffineLayer'].keys()) == ['W', 'b']
     return l['AffineLayer']['W'].astype(np.float32), l['AffineLayer'][
@@ -27,11 +27,12 @@ def read_layer(l):
 
 class LoadedGaussianPolicy(BasePolicy, nn.Module):
     def __init__(self, filename, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(**kwargs) # 激活父类所有方法使子类能完全继承，**kwargs代表不确定数量的关键字参数，用于透传
 
-        with open(filename, 'rb') as f:
+        with open(filename, 'rb') as f: # 加载已有训练模型
             data = pickle.loads(f.read())
 
+        # 判断激活函数类型
         self.nonlin_type = data['nonlin_type']
         if self.nonlin_type == 'lrelu':
             self.non_lin = nn.LeakyReLU(0.01)
@@ -41,6 +42,7 @@ class LoadedGaussianPolicy(BasePolicy, nn.Module):
             raise NotImplementedError()
         policy_type = [k for k in data.keys() if k != 'nonlin_type'][0]
 
+        # 判断策略类型
         assert policy_type == 'GaussianPolicy', (
             'Policy type {} not supported'.format(policy_type)
         )
@@ -50,7 +52,7 @@ class LoadedGaussianPolicy(BasePolicy, nn.Module):
             'logstdevs_1_Da', 'hidden', 'obsnorm', 'out'
         }
 
-        # Build the policy. First, observation normalization.
+        # Build the policy. First, observation normalization. # 从模型中读取输入均值和标准差
         assert list(self.policy_params['obsnorm'].keys()) == ['Standardizer']
         obsnorm_mean = self.policy_params['obsnorm']['Standardizer']['mean_1_D']
         obsnorm_meansq = self.policy_params['obsnorm']['Standardizer'][
@@ -62,9 +64,9 @@ class LoadedGaussianPolicy(BasePolicy, nn.Module):
 
         self.obs_norm_mean = nn.Parameter(ptu.from_numpy(obsnorm_mean))
         self.obs_norm_std = nn.Parameter(ptu.from_numpy(obsnorm_stdev))
-        self.hidden_layers = nn.ModuleList()
+        self.hidden_layers = nn.ModuleList() # 构建存储神经网络层的列表
 
-        # Hidden layers next
+        # Hidden layers next # 构建神经网络层并加载权重
         assert list(self.policy_params['hidden'].keys()) == ['FeedforwardNet']
         layer_params = self.policy_params['hidden']['FeedforwardNet']
         for layer_name in sorted(layer_params.keys()):
@@ -78,16 +80,17 @@ class LoadedGaussianPolicy(BasePolicy, nn.Module):
         self.output_layer = create_linear_layer(W, b)
 
     def forward(self, obs):
-        # Truncate or pad the observation if it does not match.
+        # Truncate or pad the observation if it does not match. # 维度匹配，多余的去掉，不足的用0补齐
+        breakpoint()
         if self.obs_dim != obs.shape[-1]:
             n_pad = self.obs_dim - obs.shape[-1]
             if n_pad > 0:
                 obs = nn.functional.pad(obs, (0, n_pad), 'constant')
             else:
                 obs = obs[:, :self.obs_dim]
-        normed_obs = (obs - self.obs_norm_mean) / (self.obs_norm_std + 1e-6)
+        normed_obs = (obs - self.obs_norm_mean) / (self.obs_norm_std + 1e-6) # 观测值归一化
         h = normed_obs
-        for layer in self.hidden_layers:
+        for layer in self.hidden_layers: # 前向传播
             h = layer(h)
             h = self.non_lin(h)
         return self.output_layer(h)
@@ -106,6 +109,7 @@ class LoadedGaussianPolicy(BasePolicy, nn.Module):
         else:
             observation = obs[None, :]
         observation = ptu.from_numpy(observation.astype(np.float32))
+        breakpoint()
         action = self(observation)
         return ptu.to_numpy(action)
 

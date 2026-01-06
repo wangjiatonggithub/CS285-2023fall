@@ -35,7 +35,7 @@ class ReplayBuffer(object):
             convert_listofrollouts(paths, concat_rew))
 
         if self.obs is None:
-            self.obs = observations[-self.max_size:]
+            self.obs = observations[-self.max_size:] # 存储从后往前数的max_size个数据
             self.acs = actions[-self.max_size:]
             self.rews = rewards[-self.max_size:]
             self.next_obs = next_observations[-self.max_size:]

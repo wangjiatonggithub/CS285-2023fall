@@ -24,7 +24,7 @@ def sample_trajectory(env, policy, max_path_length, render=False):# 根据给定
     steps = 0
     while True:
 
-        # render image of the simulated env
+        # render image of the simulated env 采集视频
         if render:
             if hasattr(env, 'sim'):
                 img = env.sim.render(camera_name='track', height=500, width=500)[::-1]
@@ -39,21 +39,12 @@ def sample_trajectory(env, policy, max_path_length, render=False):# 根据给定
 
         # 使用策略获取当前观察值的动作
         ac = policy.get_action(ob)  # 这是numpy数组
-        # 如果策略返回元组 (action, info)，则取第一个元素
-        if isinstance(ac, tuple):
-            ac = ac[0]
 
         # TODO: take that action and get reward and next ob
         # next_ob, rew, done, _ = TODO
 
         # 执行动作并获取环境反馈
-        # 在较新的gym版本中，step返回(observation, reward, terminated, truncated, info)五元组
-        step_result = env.step(ac)
-        if len(step_result) == 5:  # 新版本gym
-            next_ob, rew, terminated, truncated, _ = step_result
-            done = terminated or truncated
-        else:  # 旧版本gym
-            next_ob, rew, done, _ = step_result
+        next_ob, rew, done, _ = env.step(ac)
 
         # TODO rollout can end due to done, or due to max_path_length
         steps += 1
